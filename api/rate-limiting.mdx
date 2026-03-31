@@ -1,0 +1,92 @@
+---
+title: "Rate limiting"
+description: "Understand the per-IP rate limit applied to /api/ctai, how to handle 429 responses, and how to configure the limits."
+---
+
+The `/api/ctai` endpoint enforces a **per-IP sliding window rate limit** to protect the service from abuse. The `/api/health` endpoint is not rate-limited.
+
+## Default limits
+
+| Setting | Default value |
+|---|---|
+| Requests allowed per window | **5** |
+| Window duration | **60 seconds** |
+
+Each IP address may make up to 5 requests within any 60-second window. Requests are tracked by IP using the `cf-connecting-ip`, `x-forwarded-for`, or `x-real-ip` headers (in that order of preference).
+
+<Tip>
+  Server operators can override these defaults using the `RATE_LIMIT_POINTS` and `RATE_LIMIT_DURATION` environment variables. See the deployment guide for details.
+</Tip>
+
+## 429 response
+
+When you exceed the rate limit, the API returns an HTTP `429` status with a JSON body and rate limit headers.
+
+**Status:** `429 Too Many Requests`  
+**Content-Type:** `application/json`
+
+```json
+{ "error": "Too many requests", "retryAfterSeconds": 12 }
+```
+
+### Response body
+
+<ResponseField name="error" type="string" required>
+  Always `"Too many requests"`.
+</ResponseField>
+
+<ResponseField name="retryAfterSeconds" type="number" required>
+  The number of seconds to wait before retrying. Always at least `1`.
+</ResponseField>
+
+### Response headers
+
+| Header | Description |
+|---|---|
+| `Retry-After` | Seconds to wait before retrying. Same value as `retryAfterSeconds` in the body. |
+| `X-RateLimit-Limit` | Maximum number of requests allowed per window. |
+| `X-RateLimit-Window` | Window duration in seconds. |
+
+## Handling 429 in your client
+
+Check the HTTP status before reading the response body. If you receive a `429`, read `retryAfterSeconds` and pause before retrying.
+
+```javascript
+async function analyzeWithRetry(ioc, maxRetries = 3) {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    const res = await fetch(
+      `http://localhost:4321/api/ctai?ioc=${encodeURIComponent(ioc)}`
+    );
+
+    if (res.status === 429) {
+      const body = await res.json();
+      const wait = (body.retryAfterSeconds ?? 60) * 1000;
+      console.warn(`Rate limited. Retrying in ${body.retryAfterSeconds}s...`);
+      await new Promise((resolve) => setTimeout(resolve, wait));
+      continue;
+    }
+
+    return res; // success or non-429 error — handle upstream
+  }
+
+  throw new Error("Max retries exceeded.");
+}
+```
+
+## Configuration
+
+<Warning>
+  Changing rate limit values requires restarting the server. The in-memory rate limiter is reset on restart.
+</Warning>
+
+Set these environment variables before starting the server:
+
+```env
+RATE_LIMIT_POINTS=10
+RATE_LIMIT_DURATION=60
+```
+
+| Variable | Default | Description |
+|---|---|---|
+| `RATE_LIMIT_POINTS` | `5` | Maximum requests per IP per window. |
+| `RATE_LIMIT_DURATION` | `60` | Window duration in seconds. |

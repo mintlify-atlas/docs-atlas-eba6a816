@@ -1,0 +1,84 @@
+---
+title: "IoC Types"
+description: "The indicators of compromise CyberThreat AI can analyze, how each type is identified, and what happens when a value cannot be recognized."
+---
+
+An **indicator of compromise (IoC)** is an artifact observed on a network or in a system that, with high confidence, indicates a security breach has occurred or is occurring. CyberThreat AI accepts three categories of IoC as input: IP addresses, domain names, and file hashes.
+
+## Supported types
+
+<CardGroup cols={3}>
+  <Card title="IP address" icon="network-wired">
+    Both IPv4 and IPv6 addresses. Queried against VirusTotal and AbuseIPDB.
+  </Card>
+  <Card title="Domain" icon="globe">
+    Fully qualified domain names. Queried against VirusTotal and Robtex.
+  </Card>
+  <Card title="Hash" icon="fingerprint">
+    MD5, SHA-1, or SHA-256 file digests. Queried against VirusTotal and PolySwarm.
+  </Card>
+</CardGroup>
+
+### Type reference
+
+| Display type  | `IoCType` value | Example value                                                      |
+| ------------- | --------------- | ------------------------------------------------------------------ |
+| `IPv4`        | `ip`            | `198.51.100.42`                                                    |
+| `IPv6`        | `ip`            | `2001:db8::1`                                                      |
+| `domain`      | `domain`        | `malicious-domain.example.com`                                     |
+| `hash/md5`    | `hash`          | `d41d8cd98f00b204e9800998ecf8427e`                                 |
+| `hash/sha1`   | `hash`          | `da39a3ee5e6b4b0d3255bfef95601890afd80709`                         |
+| `hash/sha256` | `hash`          | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+
+The `IoCType` union (`'ip' | 'domain' | 'hash'`) is the internal routing key. The display type shown in the UI and included in the `meta` SSE event is more specific and derived after detection.
+
+---
+
+## Auto-detection
+
+When you submit a value without specifying its type, CyberThreat AI detects it automatically using [Zod](https://zod.dev) schema validation. Detection runs in a fixed priority order inside `detectIocType` (`src/scripts/core/iocValidators.ts`):
+
+<Steps>
+  <Step title="IP address check">
+    The value is tested against `z.union([z.ipv4(), z.ipv6()])`. If it matches, detection stops and the type is `'ip'`. The display subtype (`IPv4` or `IPv6`) is resolved later by checking whether the normalized string contains a colon (`:`).
+  </Step>
+  <Step title="Domain check">
+    The value is tested against `z.hostname().regex(/\.[a-z]{2,}$/i)`. The regex requires at least one dot followed by a TLD of two or more letters, so bare hostnames without a TLD are rejected.
+  </Step>
+  <Step title="Hash check">
+    The value is tested in order against `z.hash('md5')`, `z.hash('sha1')`, and `z.hash('sha256')`. The first match determines both the `IoCType` (`'hash'`) and the `HashAlgorithm` (`'md5' | 'sha1' | 'sha256'`), which is used to build the display type `hash/<algorithm>`.
+  </Step>
+</Steps>
+
+```typescript
+// src/scripts/core/iocValidators.ts
+export function detectIocType(rawIoc: string): IoCType | null {
+    const ioc = rawIoc.trim()
+
+    if (IOC_IP_SCHEMA.safeParse(ioc).success) {
+        return 'ip'
+    }
+    if (IOC_DOMAIN_SCHEMA.safeParse(ioc).success) {
+        return 'domain'
+    }
+    if (IOC_HASH_SCHEMA.safeParse(ioc).success) {
+        return 'hash'
+    }
+
+    return null
+}
+```
+
+<Tip>
+  Input is trimmed before validation, so leading and trailing whitespace does not affect detection. Hash input is also lowercased before being matched.
+</Tip>
+
+---
+
+## Unrecognized values
+
+If the submitted value does not pass any of the three schema checks, `detectIocType` returns `null`. The API responds with an error and no analysis is performed.
+
+<Warning>
+  Values that look like IoCs but fail validation — for example, a hostname without a valid TLD, or a hex string that is neither 32, 40, nor 64 characters long — are treated as unrecognized and rejected.
+</Warning>

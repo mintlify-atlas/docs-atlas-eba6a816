@@ -1,0 +1,189 @@
+---
+title: "Error codes"
+description: "Reference for HTTP error responses, error type values, and pipeline stage identifiers returned by the CyberThreat AI API."
+---
+
+The `/api/ctai` endpoint can return errors in two ways:
+
+- **Before the stream opens** — as an `application/json` response with an HTTP error status code (400, 429, 500).
+- **Inside the stream** — as an `error` SSE event with a JSON payload. See [SSE Events](/api/sse-events#error).
+
+## HTTP error responses
+
+### 400 — Bad request
+
+Returned when the request cannot be processed due to a client error.
+
+<AccordionGroup>
+  <Accordion title="Missing IoC parameter">
+    The `ioc` query parameter was not provided.
+
+    ```json
+    { "error": "Falta el parámetro de IoC" }
+    ```
+  </Accordion>
+  <Accordion title="Unknown IoC type">
+    The `ioc` value does not match any supported format: IPv4, IPv6, domain, MD5, SHA1, or SHA256.
+
+    ```json
+    { "error": "Tipo de IoC desconocido" }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### 429 — Too many requests
+
+Returned when the requesting IP has exceeded the rate limit. See [Rate Limiting](/api/rate-limiting).
+
+```json
+{ "error": "Too many requests", "retryAfterSeconds": 12 }
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `error` | string | Always `"Too many requests"`. |
+| `retryAfterSeconds` | number | Seconds to wait before the next request will succeed. |
+
+The response also includes these headers:
+
+| Header | Description |
+|---|---|
+| `Retry-After` | Same value as `retryAfterSeconds`. |
+| `X-RateLimit-Limit` | Maximum requests allowed in the window. |
+| `X-RateLimit-Window` | Window duration in seconds. |
+
+### 500 — Internal server error
+
+Returned when an unexpected error occurs before the stream can be opened — for example, when all CTI sources fail critically.
+
+```json
+{
+  "error": "No se pudo completar la consulta de fuentes del IoC.",
+  "stage": "ioc",
+  "errorType": "unknown"
+}
+```
+
+## Stream error events
+
+Errors that occur after the stream has opened are delivered as `error` SSE events instead of an HTTP error status. The stream closes immediately after an `error` event.
+
+```json
+{
+  "error": "La API Key de OpenRouter no es válida o no tiene permisos suficientes.",
+  "stage": "ai",
+  "errorType": "invalid_api_key"
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `error` | string | Human-readable error message in Spanish. |
+| `stage` | string | Pipeline stage where the error occurred. See [stages](#stage-values) below. |
+| `errorType` | string | Machine-readable error classification. See [error types](#error-type-values) below. |
+
+## Stage values
+
+The `stage` field identifies which part of the analysis pipeline failed.
+
+<AccordionGroup>
+  <Accordion title="ioc — threat intelligence gathering">
+    The error occurred while fetching data from one or more CTI sources (VirusTotal, AbuseIPDB, PolySwarm, Robtex). The AI analysis was not attempted.
+
+    Example:
+
+    ```json
+    {
+      "error": "No se pudo completar la consulta de fuentes del IoC.",
+      "stage": "ioc",
+      "errorType": "unknown"
+    }
+    ```
+  </Accordion>
+  <Accordion title="ai — AI analysis">
+    The error occurred while calling OpenRouter or processing the AI model's response.
+
+    Example:
+
+    ```json
+    {
+      "error": "La API Key de OpenRouter no es válida o no tiene permisos suficientes.",
+      "stage": "ai",
+      "errorType": "invalid_api_key"
+    }
+    ```
+  </Accordion>
+  <Accordion title="unknown — unexpected error">
+    An error occurred that could not be attributed to a specific stage.
+
+    ```json
+    {
+      "error": "No se pudo completar el análisis.",
+      "stage": "unknown"
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Error type values
+
+The `errorType` field provides a machine-readable classification for programmatic error handling. It appears in both HTTP error response bodies and in `error` SSE event payloads, as well as in `warnings[].reason` within `meta` events.
+
+| `errorType` | Description |
+|---|---|
+| `invalid_api_key` | The API key for a provider is missing, invalid, or does not have sufficient permissions. |
+| `model_error` | The AI model returned an unexpected error — for example, a context length limit was exceeded. |
+| `api_unavailable` | The provider's service is temporarily unavailable (HTTP 5xx from upstream). |
+| `not_found` | The IoC was not found in the provider's records. |
+| `unknown` | An unexpected error with no more specific classification. |
+
+### Common error bodies
+
+```json
+// Invalid OpenRouter API key
+{
+  "error": "La API Key de OpenRouter no es válida o no tiene permisos suficientes.",
+  "stage": "ai",
+  "errorType": "invalid_api_key"
+}
+```
+
+```json
+// AI model returned an error
+{
+  "error": "El modelo devolvió un error inesperado durante el análisis.",
+  "stage": "ai",
+  "errorType": "model_error"
+}
+```
+
+```json
+// Provider service unavailable
+{
+  "error": "La API de VirusTotal no está disponible en este momento.",
+  "stage": "ioc",
+  "errorType": "api_unavailable"
+}
+```
+
+```json
+// IoC not found in provider records
+{
+  "error": "El IoC no existe en los registros de PolySwarm.",
+  "stage": "ioc",
+  "errorType": "not_found"
+}
+```
+
+```json
+// Generic IoC stage failure
+{
+  "error": "No se pudo completar la consulta de fuentes del IoC.",
+  "stage": "ioc",
+  "errorType": "unknown"
+}
+```
+
+<Note>
+  Non-fatal source failures — where some sources succeed and others fail — are reported as `warnings` in the `meta` SSE event rather than as errors. The stream continues and the AI analysis proceeds with data from the available sources.
+</Note>

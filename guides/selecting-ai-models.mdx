@@ -1,0 +1,74 @@
+---
+title: "Selecting an AI model"
+description: "Choose which AI model analyzes your IoC. CyberThreat AI supports several models via OpenRouter, including a fully automatic selection option."
+---
+
+Before submitting an IoC for analysis, you can choose the AI model that will interpret the threat intelligence data and produce the verdict. The model selector is a dropdown in the main interface, directly above the submit button.
+
+## Available models
+
+<AccordionGroup>
+  <Accordion title="Default - OpenRouter (Auto)">
+    **Model ID:** `openrouter/auto`
+
+    OpenRouter automatically selects the best available model for your request based on current availability, performance, and cost. This is the recommended option if you are unsure which model to use — it adapts without any input from you.
+
+    After analysis completes, the UI shows the actual model that OpenRouter routed to, so you always know which model produced your verdict.
+  </Accordion>
+  <Accordion title="OpenRouter (Free)">
+    **Model ID:** `openrouter/free`
+
+    OpenRouter routes your request to a free-tier model from its catalog. The specific model may vary. Use this when you want free-tier access without specifying a provider.
+  </Accordion>
+  <Accordion title="LiquidAI: LFM2.5-1.2B-Instruct (Free)">
+    **Model ID:** `liquid/lfm-2.5-1.2b-instruct-20260120:free`
+
+    **Provider:** Liquid
+
+    A compact, free-tier instruction-following model from LiquidAI. Suitable for lightweight analysis where response speed matters more than depth.
+  </Accordion>
+  <Accordion title="StepFun: Step 3.5 Flash (Free)">
+    **Model ID:** `stepfun/step-3.5-flash:free`
+
+    **Provider:** StepFun
+
+    A fast free-tier model from StepFun. Good for quick verdicts where you want a different model perspective than the OpenRouter defaults.
+  </Accordion>
+  <Accordion title="Google: Gemma 3 4B (Free)">
+    **Model ID:** `google/gemma-3-4b-it:free`
+
+    **Provider:** Google AI Studio
+
+    Google's Gemma 3 4B instruction-tuned model, available for free via OpenRouter. A capable open-weight model for structured analysis tasks.
+  </Accordion>
+</AccordionGroup>
+
+## Seeing the routed model
+
+When you use `openrouter/auto` or `openrouter/free`, OpenRouter selects the actual underlying model at request time. Once the analysis stream begins, the UI updates to display the **real model name** that was used — this comes from the `model` SSE event emitted during streaming.
+
+This means the model shown before you submit may differ from the one shown in the results panel. The post-analysis model name is always the accurate one.
+
+## Passing a model via the API
+
+If you are calling the API directly, use the `model` query parameter:
+
+```bash
+curl "https://ctai.marcvspt.tech/api/ctai?ioc=1.2.3.4&model=openrouter/auto"
+```
+
+```bash
+curl "https://ctai.marcvspt.tech/api/ctai?ioc=example.com&model=google/gemma-3-4b-it:free"
+```
+
+<Tip>
+  Model IDs are case-sensitive. Use the exact IDs listed above.
+</Tip>
+
+## Invalid model IDs
+
+If you supply a model ID that is not in the allowed list, the platform falls back to `openrouter/free` automatically — no error is returned and the analysis continues. The results will reflect whichever model was actually used.
+
+<Note>
+  All models are accessed via OpenRouter, so an OpenRouter API key is required regardless of which model you select. See [Using your API keys](/guides/using-api-keys) for setup instructions.
+</Note>

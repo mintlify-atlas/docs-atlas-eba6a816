@@ -1,0 +1,197 @@
+---
+title: "Analyze IoC"
+description: "Submit an indicator of compromise and receive a real-time SSE stream of threat intelligence data and an AI-generated verdict."
+---
+
+Submits an indicator of compromise for analysis. The response is a **Server-Sent Events stream** (`text/event-stream`) that emits metadata, AI model information, streamed markdown content, and a final `done` signal.
+
+```text
+GET /api/ctai
+```
+
+## Query parameters
+
+<ParamField query="ioc" type="string" required>
+  The indicator of compromise to analyze. Supported types:
+
+  - **IPv4** — e.g., `1.2.3.4`
+  - **IPv6** — e.g., `2001:4860:4860::8888`
+  - **Domain** — e.g., `malicious-domain.example`
+  - **MD5 hash** — 32 hex characters
+  - **SHA1 hash** — 40 hex characters
+  - **SHA256 hash** — 64 hex characters
+
+  If the value does not match any of these formats, the API returns a `400` error.
+</ParamField>
+
+<ParamField query="model" type="string">
+  The AI model ID to use for analysis. Must be one of the allowed model IDs listed below. If omitted or invalid, the server defaults to `openrouter/free`.
+
+  | Model ID | Label |
+  |---|---|
+  | `openrouter/auto` | Default — OpenRouter (Auto) |
+  | `openrouter/free` | OpenRouter (Free) — **default** |
+  | `liquid/lfm-2.5-1.2b-instruct-20260120:free` | LiquidAI: LFM2.5-1.2B-Instruct (Free) |
+  | `stepfun/step-3.5-flash:free` | StepFun: Step 3.5 Flash (Free) |
+  | `google/gemma-3-4b-it:free` | Google: Gemma 3 4B (Free) |
+</ParamField>
+
+## Request headers
+
+<ParamField header="X-OpenRouter-Key" type="string">
+  Your OpenRouter API key. Used to call the AI model. Falls back to the server's `OPENROUTER_API_KEY` environment variable if omitted. If neither is present, the AI analysis step fails and an `error` SSE event is emitted with `errorType: "invalid_api_key"`.
+</ParamField>
+
+<ParamField header="X-VT-Key" type="string">
+  Your VirusTotal API key. Used to enrich IP, domain, and hash IoCs. Optional — if omitted, the server falls back to its own key, or skips VirusTotal and emits a warning.
+</ParamField>
+
+<ParamField header="X-AbuseIPDB-Key" type="string">
+  Your AbuseIPDB API key. Used to enrich IP address IoCs. Optional.
+</ParamField>
+
+<ParamField header="X-Polyswarm-Key" type="string">
+  Your PolySwarm API key. Used to enrich hash IoCs. Optional.
+</ParamField>
+
+## Response
+
+**Status:** `200 OK`  
+**Content-Type:** `text/event-stream`  
+**Connection:** `keep-alive`
+
+The response body is a stream of [SSE events](/api/sse-events). The normal sequence is:
+
+```text
+meta → model → chunk (×N) → done
+```
+
+If a non-fatal source fails, warnings are included in the `meta` event and the stream continues. If a fatal error occurs mid-stream, an `error` event is emitted instead of `done`.
+
+See [SSE Events](/api/sse-events) for the full schema of each event type.
+
+## Error responses
+
+These errors are returned as `application/json` **before** the stream opens.
+
+<AccordionGroup>
+  <Accordion title="400 — Missing IoC parameter">
+    The `ioc` query parameter was not included in the request.
+
+    ```json
+    { "error": "Falta el parámetro de IoC" }
+    ```
+  </Accordion>
+  <Accordion title="400 — Unknown IoC type">
+    The value of `ioc` did not match any supported format (IPv4, IPv6, domain, MD5, SHA1, SHA256).
+
+    ```json
+    { "error": "Tipo de IoC desconocido" }
+    ```
+  </Accordion>
+  <Accordion title="429 — Rate limit exceeded">
+    The requesting IP has exceeded the allowed request rate. The `retryAfterSeconds` field tells you how long to wait before retrying. See [Rate Limiting](/api/rate-limiting).
+
+    ```json
+    { "error": "Too many requests", "retryAfterSeconds": 12 }
+    ```
+  </Accordion>
+  <Accordion title="500 — Internal error">
+    An unexpected error occurred before or during stream initialization — for example, all CTI sources failed.
+
+    ```json
+    {
+      "error": "No se pudo completar la consulta de fuentes del IoC.",
+      "stage": "ioc",
+      "errorType": "unknown"
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Examples
+
+<CodeGroup>
+
+```bash IPv4 address
+curl "http://localhost:4321/api/ctai?ioc=1.2.3.4"
+```
+
+```bash IPv6 address
+curl "http://localhost:4321/api/ctai?ioc=2001:4860:4860::8888"
+```
+
+```bash MD5 hash
+curl "http://localhost:4321/api/ctai?ioc=44d88612fea8a8f36de82e1278abb02f"
+```
+
+```bash SHA256 hash
+curl "http://localhost:4321/api/ctai?ioc=275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f"
+```
+
+```bash Domain
+curl "http://localhost:4321/api/ctai?ioc=malicious-domain.example"
+```
+
+</CodeGroup>
+
+### Specifying a model
+
+```bash
+curl "http://localhost:4321/api/ctai?ioc=1.2.3.4&model=openrouter/auto"
+```
+
+### Using your own API keys
+
+```bash
+curl "http://localhost:4321/api/ctai?ioc=1.2.3.4" \
+  -H "X-OpenRouter-Key: sk-or-your-key-here" \
+  -H "X-VT-Key: your-virustotal-key" \
+  -H "X-AbuseIPDB-Key: your-abuseipdb-key"
+```
+
+### Parsing the stream
+
+The response is a raw SSE stream. Here is a minimal example of consuming it in a browser or Node.js environment:
+
+```javascript
+const response = await fetch(
+  "http://localhost:4321/api/ctai?ioc=1.2.3.4&model=openrouter/free",
+  {
+    headers: {
+      "X-OpenRouter-Key": "sk-or-your-key-here"
+    }
+  }
+);
+
+const reader = response.body.getReader();
+const decoder = new TextDecoder();
+let buffer = "";
+
+while (true) {
+  const { done, value } = await reader.read();
+  if (done) break;
+
+  buffer += decoder.decode(value, { stream: true });
+  const parts = buffer.split("\n\n");
+  buffer = parts.pop() ?? "";
+
+  for (const part of parts) {
+    const eventLine = part.split("\n").find((l) => l.startsWith("event:"));
+    const dataLine = part.split("\n").find((l) => l.startsWith("data:"));
+    if (!eventLine || !dataLine) continue;
+
+    const event = eventLine.slice("event:".length).trim();
+    const data = JSON.parse(dataLine.slice("data:".length).trim());
+
+    if (event === "meta") console.log("IoC:", data.ioc, "| Type:", data.type);
+    if (event === "chunk") process.stdout.write(data.content);
+    if (event === "done") console.log("\n[Stream complete]");
+    if (event === "error") console.error("Error:", data.error);
+  }
+}
+```
+
+<Tip>
+  The AI response content (`chunk` events) is Markdown-formatted text in Spanish. Use a Markdown renderer such as `marked` with `DOMPurify` sanitization before displaying it in a browser.
+</Tip>

@@ -1,0 +1,125 @@
+---
+title: "Configuration"
+description: "Configure your API keys for threat intelligence sources and choose which AI model performs the analysis."
+---
+
+CyberThreat AI works without any configuration — the platform uses built-in credentials by default. Supplying your own API keys gives you higher rate limits with each provider, access to your own usage quotas, and the ability to use a specific OpenRouter model.
+
+## API keys
+
+The platform integrates with four external services. Each has its own key and scope:
+
+<AccordionGroup>
+  <Accordion title="OpenRouter">
+    OpenRouter routes your request to the AI model of your choice. An OpenRouter API key is required for the AI verdict step.
+
+    - Get your key at [openrouter.ai/keys](https://openrouter.ai/keys)
+    - Header: `X-OpenRouter-Key`
+    - Required for AI analysis. Without a valid key, the analysis will fail at the AI stage.
+  </Accordion>
+  <Accordion title="VirusTotal">
+    VirusTotal provides reputation data for IP addresses, domains, and file hashes. It is queried for all IoC types.
+
+    - Get your key at [virustotal.com](https://www.virustotal.com/gui/my-apikey)
+    - Header: `X-VT-Key`
+    - Without this key, VirusTotal data will not be included in the analysis.
+  </Accordion>
+  <Accordion title="AbuseIPDB">
+    AbuseIPDB reports abuse activity for IP addresses. It is queried only when the IoC is an IPv4 or IPv6 address.
+
+    - Get your key at [abuseipdb.com/account/api](https://www.abuseipdb.com/account/api)
+    - Header: `X-AbuseIPDB-Key`
+    - Without this key, AbuseIPDB data will be omitted from IP analyses.
+  </Accordion>
+  <Accordion title="PolySwarm">
+    PolySwarm provides malware intelligence for file hashes. It is queried only when the IoC is an MD5, SHA1, or SHA256 hash.
+
+    - Get your key at [polyswarm.network](https://polyswarm.network)
+    - Header: `X-Polyswarm-Key`
+    - Without this key, PolySwarm data will be omitted from hash analyses.
+  </Accordion>
+</AccordionGroup>
+
+<Note>
+  **Robtex** provides passive DNS and domain reputation data and does not require an API key. It is queried automatically for domain IoCs at no cost.
+</Note>
+
+## How to provide keys
+
+There are two ways to supply API keys: through the UI modal or via HTTP request headers.
+
+### Via the UI modal
+
+Click the **API Keys** button in the platform header to open the configuration modal. Enter your keys in the corresponding fields and save. Keys are stored in your browser's `localStorage` and sent automatically with every analysis request you make from that browser.
+
+This is the recommended approach when using the web interface interactively.
+
+<Warning>
+  Keys stored in `localStorage` are scoped to the browser and device. They are not synced across devices and are cleared if you clear your browser storage.
+</Warning>
+
+### Via HTTP request headers
+
+When calling the API programmatically, pass keys as custom request headers:
+
+| Header | Service |
+|--------|---------|
+| `X-OpenRouter-Key` | OpenRouter (AI) |
+| `X-VT-Key` | VirusTotal |
+| `X-AbuseIPDB-Key` | AbuseIPDB |
+| `X-Polyswarm-Key` | PolySwarm |
+
+```bash
+curl "https://ctai.marcvspt.tech/api/ctai?ioc=1.2.3.4" \
+  -H "X-OpenRouter-Key: sk-or-..." \
+  -H "X-VT-Key: your-virustotal-key" \
+  -H "X-AbuseIPDB-Key: your-abuseipdb-key"
+```
+
+Keys passed via headers take priority over any keys you have saved in the UI. This makes it straightforward to use different keys for automated pipelines without changing your browser configuration.
+
+<Tip>
+  You only need to supply keys for the services relevant to your IoC type. For example, when analyzing a file hash, you only need `X-OpenRouter-Key`, `X-VT-Key`, and `X-Polyswarm-Key` — `X-AbuseIPDB-Key` has no effect for hashes.
+</Tip>
+
+## AI model selection
+
+CyberThreat AI routes AI analysis through OpenRouter. You can choose which model is used for the verdict.
+
+### Available models
+
+| Model ID | Label | Provider |
+|----------|-------|----------|
+| `openrouter/auto` | Default — OpenRouter (Auto) | OpenRouter |
+| `openrouter/free` | OpenRouter (Free) | OpenRouter |
+| `liquid/lfm-2.5-1.2b-instruct-20260120:free` | LiquidAI: LFM2.5-1.2B-Instruct (Free) | LiquidAI |
+| `stepfun/step-3.5-flash:free` | StepFun: Step 3.5 Flash (Free) | StepFun |
+| `google/gemma-3-4b-it:free` | Google: Gemma 3 4B (Free) | Google AI Studio |
+
+The default model is `openrouter/free`. If you specify a model ID that is not on the allowed list, the platform falls back to the default automatically.
+
+### Selecting a model in the UI
+
+Use the model selector dropdown on the main page. The selected model persists for the duration of your session.
+
+### Selecting a model via API
+
+Pass the `model` query parameter with a supported model ID:
+
+```bash
+curl "https://ctai.marcvspt.tech/api/ctai?ioc=1.2.3.4&model=openrouter/auto"
+```
+
+For guidance on choosing the right model for your use case, see [Selecting an AI model](/guides/selecting-ai-models).
+
+## Warning behavior
+
+When a CTI source fails or returns no data, CyberThreat AI does not stop the analysis. Instead, it continues with the available sources and includes a `warnings` array in the `meta` SSE event. The UI surfaces these warnings inline so you can see which sources contributed to the verdict and which did not.
+
+Conditions that trigger a warning include:
+
+- An API key is missing or invalid for a source
+- A source returns no data for the queried IoC
+- A source is temporarily unavailable
+
+If all CTI sources fail simultaneously, the analysis is cancelled before reaching the AI step and an error is returned.

@@ -1,0 +1,70 @@
+---
+title: "Introduction"
+description: "CyberThreat AI aggregates threat intelligence from multiple sources and delivers an AI-powered verdict for any indicator of compromise."
+---
+
+CyberThreat AI is a web platform that accepts an indicator of compromise (IoC) — an IP address, domain, or file hash — and returns a structured threat verdict sourced from multiple cyber threat intelligence (CTI) providers, reasoned by an AI model in real time.
+
+## What problem it solves
+
+Investigating a suspicious IP, domain, or file hash typically means querying several threat intelligence platforms separately, manually correlating the results, and then forming a judgment. CyberThreat AI automates that entire workflow: it fans out to all relevant sources in parallel, normalizes the data, and streams a structured AI analysis directly to you — verdict, confidence level, reasoning, and recommended actions included.
+
+## Key capabilities
+
+<CardGroup cols={2}>
+  <Card title="Automatic IoC type detection" icon="magnifying-glass">
+    Paste any IPv4, IPv6 address, domain name, MD5, SHA1, or SHA256 hash. CyberThreat AI identifies the type automatically using strict Zod-based validators — no dropdowns, no manual selection.
+  </Card>
+  <Card title="Multi-source threat intelligence" icon="shield-halved">
+    Queries VirusTotal, AbuseIPDB, PolySwarm, and Robtex in parallel. If a single source is unavailable or returns no data, the analysis continues with the remaining sources and surfaces a warning.
+  </Card>
+  <Card title="Real-time AI verdict streaming" icon="bolt">
+    Results stream token by token via Server-Sent Events (SSE). The AI response is rendered as formatted markdown as it arrives — no waiting for the full response before you can start reading.
+  </Card>
+  <Card title="Bring your own keys (BYOK)" icon="key">
+    Supply your own API keys for OpenRouter, VirusTotal, AbuseIPDB, and PolySwarm. Keys can be set once in the UI and are stored locally in your browser, or passed per-request via HTTP headers.
+  </Card>
+  <Card title="AI model selection" icon="sliders">
+    Choose the AI model used for analysis. Options include OpenRouter Auto, free-tier models from Google, StepFun, and LiquidAI, letting you balance cost and capability.
+  </Card>
+  <Card title="Per-source warning system" icon="triangle-exclamation">
+    When a CTI source returns an invalid API key, no data, or an unexpected error, the platform surfaces a warning inline without interrupting the analysis — so you always know which sources contributed.
+  </Card>
+</CardGroup>
+
+## Supported IoC types
+
+CyberThreat AI detects the following indicator types automatically:
+
+| Type | Example |
+|------|---------|
+| IPv4 | `1.2.3.4` |
+| IPv6 | `2001:4860:4860::8888` |
+| Domain | `example.com` |
+| MD5 hash | `44d88612fea8a8f36de82e1278abb02f` |
+| SHA1 hash | `da39a3ee5e6b4b0d3255bfef95601890afd80709` |
+| SHA256 hash | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+
+## What the AI verdict includes
+
+Every analysis produces a structured response in Spanish with the following sections:
+
+- **Veredicto** — classification: Malicioso (Malicious), Sospechoso (Suspicious), or Benigno (Benign)
+- **Confianza** — confidence level: Baja (Low), Media (Medium), or Alta (High)
+- **Resumen** — a short narrative summary of the analysis
+- **Motivos** — a list of specific reasons supporting the verdict
+- **Acciones recomendadas** — recommended actions to take
+
+## Get started
+
+<CardGroup cols={3}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Submit your first IoC and read a verdict within 2 minutes
+  </Card>
+  <Card title="Configuration" icon="gear" href="/configuration">
+    Configure your API keys and choose an AI model
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/overview">
+    Call the analysis endpoint programmatically
+  </Card>
+</CardGroup>

@@ -1,0 +1,106 @@
+---
+title: "Self-hosting"
+description: "Run your own instance of CyberThreat AI on your own infrastructure using Node.js and pnpm."
+---
+
+CyberThreat AI is an open-source Astro application that you can self-host. This guide covers everything you need to get a working instance running locally or on a server.
+
+## Prerequisites
+
+- **Node.js** >= 22.12.0
+- **pnpm** (recommended; npm also works)
+- API keys for the services you want to support (see [Using your API keys](/guides/using-api-keys))
+
+## Setup
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/marcvspt/cyberthreat-ai.git
+    cd cyberthreat-ai
+    ```
+  </Step>
+  <Step title="Install dependencies">
+    ```bash
+    pnpm install
+    ```
+  </Step>
+  <Step title="Create a .env file">
+    Create a `.env` file at the root of the project. All variables are optional, but at minimum you should set `OPENROUTER_API_KEY` if your users will not be supplying their own OpenRouter key.
+
+    ```env
+    VIRUSTOTAL_API_KEY=your-virustotal-key
+    ABUSEIPDB_API_KEY=your-abuseipdb-key
+    POLYSWARM_API_KEY=your-polyswarm-key
+    OPENROUTER_API_KEY=your-openrouter-key
+    RATE_LIMIT_POINTS=5
+    RATE_LIMIT_DURATION=60
+    ```
+
+    See the [environment variable reference](#environment-variables) below for details on each variable.
+  </Step>
+  <Step title="Start the server">
+    <Tabs>
+      <Tab title="Development">
+        ```bash
+        pnpm run dev
+        ```
+
+        The development server starts at `http://localhost:4321`. It includes hot module replacement and detailed error output.
+      </Tab>
+      <Tab title="Production">
+        Build the application and start the standalone Node.js server:
+
+        ```bash
+        pnpm run build
+        node dist/server/entry.mjs
+        ```
+
+        The server starts on port `4321` by default.
+      </Tab>
+    </Tabs>
+  </Step>
+</Steps>
+
+## Environment variables
+
+<AccordionGroup>
+  <Accordion title="Threat intelligence source keys">
+    These keys are used as **server-side fallbacks**. When a user does not supply their own key via request headers or the UI settings modal, CyberThreat AI falls back to these values. If a key is absent from both the user's request and the environment, that source is skipped or queried without authentication.
+
+    | Variable | Service | Required |
+    |----------|---------|----------|
+    | `VIRUSTOTAL_API_KEY` | VirusTotal — IP, domain, and hash lookups | No |
+    | `ABUSEIPDB_API_KEY` | AbuseIPDB — IP reputation | No |
+    | `POLYSWARM_API_KEY` | PolySwarm — hash analysis | No |
+
+    <Note>
+      Robtex does not require an API key and has no corresponding environment variable.
+    </Note>
+  </Accordion>
+  <Accordion title="OpenRouter key">
+    | Variable | Description | Required |
+    |----------|-------------|----------|
+    | `OPENROUTER_API_KEY` | Server-side fallback key for OpenRouter. Used when a user has not set their own OpenRouter key. | Required if users won't supply their own |
+
+    <Warning>
+      If `OPENROUTER_API_KEY` is not set and users do not provide their own OpenRouter key, all analysis requests will fail at the AI stage.
+    </Warning>
+  </Accordion>
+  <Accordion title="Rate limiting">
+    CyberThreat AI enforces a per-IP rate limit on the `/api/ctai` endpoint. These variables control the window size and request allowance.
+
+    | Variable | Description | Default |
+    |----------|-------------|---------|
+    | `RATE_LIMIT_POINTS` | Maximum number of requests allowed per IP within the duration window | `5` |
+    | `RATE_LIMIT_DURATION` | Duration of the rate limit window, in seconds | `60` |
+
+    With the defaults, each IP address can submit up to 5 analysis requests per 60-second window. Requests beyond this limit receive a `429 Too Many Requests` response with a `retryAfterSeconds` field.
+  </Accordion>
+</AccordionGroup>
+
+## Docker and Dokploy
+
+The application builds to a standalone Node.js server (`dist/server/entry.mjs`), which makes it straightforward to containerize. You can wrap it in a standard Node.js Docker image, expose port `4321`, and pass your environment variables at runtime.
+
+If you use [Dokploy](https://dokploy.com) for deployment, point it at the repository and configure your environment variables in the Dokploy dashboard. The standalone Astro output requires no additional server configuration beyond a Node.js runtime.

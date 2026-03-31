@@ -1,0 +1,155 @@
+---
+title: "AI Analysis"
+description: "How CyberThreat AI builds a prompt from CTI data, routes it to an LLM via OpenRouter, and streams the verdict back to the client."
+---
+
+Once threat intelligence data has been collected from the configured sources, CyberThreat AI sends it to a large language model for interpretation. The model produces a structured verdict in Spanish, streamed back to the client as Server-Sent Events.
+
+---
+
+## Analysis flow
+
+<Steps>
+  <Step title="CTI data collection">
+    The appropriate analysis function (`analyzeIP`, `analyzeDomain`, or `analyzeHash`) queries the relevant sources and returns an `IocAnalysisResult` containing the raw API responses and any `SourceWarning` values from failed sources.
+  </Step>
+  <Step title="Prompt construction">
+    `buildPrompt` assembles a structured system prompt that includes the IoC value, its type, the full `toolResult` JSON, and any warnings. The model is instructed to respond in Spanish and follow a specific Markdown template.
+  </Step>
+  <Step title="OpenRouter request">
+    The prompt is sent to `https://openrouter.ai/api/v1/chat/completions` as a streaming chat completion request. Temperature is set to `0.2` and `max_tokens` to `700` to keep responses focused and deterministic.
+  </Step>
+  <Step title="SSE streaming">
+    The response body is read chunk by chunk. Each piece of the verdict is forwarded to the client as an SSE `chunk` event as soon as it arrives. A `meta` event is sent first; a `done` event closes the stream.
+  </Step>
+</Steps>
+
+---
+
+## Verdict format
+
+The model always responds in **Spanish** using the following Markdown structure:
+
+```markdown
+**Veredicto:** <Malicioso|Sospechoso|Benigno>
+**Confianza:** <Baja|Media|Alta>
+
+**Resumen:** <short summary of the analysis>
+
+**Motivos:**
+- <reason>
+- <reason>
+
+**Acciones recomendadas:**
+- <action>
+- <action>
+```
+
+| Field                    | Possible values                    | Description                                         |
+| ------------------------ | ---------------------------------- | --------------------------------------------------- |
+| `Veredicto`              | `Malicioso`, `Sospechoso`, `Benigno` | Overall threat classification.                    |
+| `Confianza`              | `Baja`, `Media`, `Alta`            | The model's confidence in the verdict.              |
+| `Resumen`                | Free text                          | A short summary of the analysis findings.           |
+| `Motivos`                | Bullet list                        | Specific observations that support the verdict.     |
+| `Acciones recomendadas`  | Bullet list                        | Recommended response or mitigation actions.         |
+
+<Note>
+  The verdict is always in Spanish regardless of the language you use to interact with the platform. This is enforced directly in the prompt.
+</Note>
+
+---
+
+## SSE event stream
+
+The server sends events using the `text/event-stream` content type. Each event follows the format `event: <name>\ndata: <json>\n\n`.
+
+<Tabs>
+  <Tab title="meta">
+    Sent once at the start of the stream, before any content. Contains metadata about the request.
+
+    ```json
+    {
+      "ioc": "198.51.100.42",
+      "type": "IPv4",
+      "model": "openrouter/free",
+      "warnings": []
+    }
+    ```
+
+    `warnings` is omitted when there are no source failures.
+  </Tab>
+  <Tab title="model">
+    Sent once after the first chunk is received from OpenRouter, when a routed model name becomes available. See [Model routing](#model-routing) below.
+
+    ```json
+    {
+      "model": "google/gemma-3-4b-it"
+    }
+    ```
+  </Tab>
+  <Tab title="chunk">
+    Sent for each token or partial token as the model streams its response.
+
+    ```json
+    {
+      "content": "**Veredicto:** Malicioso"
+    }
+    ```
+  </Tab>
+  <Tab title="done">
+    Sent once at the end of the stream to signal completion.
+
+    ```json
+    {
+      "done": true
+    }
+    ```
+  </Tab>
+  <Tab title="error">
+    Sent if an unrecoverable error occurs during streaming. After this event the stream closes.
+
+    ```json
+    {
+      "error": "La API Key de OpenRouter no es válida o no tiene permisos suficientes.",
+      "stage": "ai",
+      "errorType": "invalid_api_key"
+    }
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## Model routing
+
+CyberThreat AI uses [OpenRouter](https://openrouter.ai) as a unified gateway to multiple LLM providers. The model is selected per request from the catalog of allowed models.
+
+### Available models
+
+| Model ID                                            | Label                               | Provider          |
+| --------------------------------------------------- | ----------------------------------- | ----------------- |
+| `openrouter/auto`                                   | Default — OpenRouter (Auto)         | OpenRouter        |
+| `openrouter/free`                                   | OpenRouter (Free)                   | OpenRouter        |
+| `liquid/lfm-2.5-1.2b-instruct-20260120:free`        | LiquidAI: LFM2.5-1.2B-Instruct (Free) | Liquid         |
+| `stepfun/step-3.5-flash:free`                       | StepFun: Step 3.5 Flash (Free)      | StepFun           |
+| `google/gemma-3-4b-it:free`                         | Google: Gemma 3 4B (Free)           | Google AI Studio  |
+
+### Auto and free routing
+
+When you select `openrouter/auto` or `openrouter/free`, OpenRouter itself chooses the actual model to serve the request. The chosen model is reported back in the first streaming chunk via the `model` field of the parsed payload.
+
+CyberThreat AI captures this value and emits a `model` SSE event so the UI can display the real model name rather than the routing alias.
+
+```typescript
+// src/scripts/core/ctai.ts — simplified
+if (!routedModelSent && routedModel) {
+    routedModelSent = true
+    controller.enqueue(createSseEvent('model', {
+        model: buildDisplayModel(model, routedModel)
+    }))
+}
+```
+
+<Tip>
+  If the requested model ID is not in the allowed set, the server silently falls back to `openrouter/free` before sending the request to OpenRouter.
+</Tip>

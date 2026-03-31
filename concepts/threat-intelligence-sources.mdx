@@ -1,0 +1,91 @@
+---
+title: "Threat Intelligence Sources"
+description: "The four CTI providers CyberThreat AI queries, which IoC types each covers, and how the system handles source failures."
+---
+
+CyberThreat AI aggregates data from four threat intelligence providers before sending it to the AI model. Each provider is queried concurrently via `fetchAllSources`. The combined output is included verbatim in the prompt as `toolResult`.
+
+## Provider overview
+
+<CardGroup cols={2}>
+  <Card title="VirusTotal" icon="shield-check">
+    Multi-engine file, URL, domain, and IP scanner. Covers all three IoC types: IP addresses, domains, and hashes. Requires an API key.
+  </Card>
+  <Card title="AbuseIPDB" icon="triangle-exclamation">
+    Community-driven IP reputation database focused on abuse reports. Covers IP addresses only. Requires an API key.
+  </Card>
+  <Card title="PolySwarm" icon="bug">
+    Decentralized threat intelligence marketplace specializing in malware analysis. Covers file hashes only (MD5, SHA-1, SHA-256). Requires an API key.
+  </Card>
+  <Card title="Robtex" icon="magnifying-glass">
+    DNS and network intelligence service providing domain reputation and ranking data. Covers domains only. No API key required — uses the public free API.
+  </Card>
+</CardGroup>
+
+---
+
+## Source-to-IoC mapping
+
+The analysis function for each IoC type hardcodes which sources are queried. You cannot add or remove sources per request.
+
+| IoC type           | VirusTotal | AbuseIPDB | PolySwarm | Robtex |
+| ------------------ | :--------: | :-------: | :-------: | :----: |
+| IP (`IPv4`/`IPv6`) | ✓          | ✓         |           |        |
+| `domain`           | ✓          |           |           | ✓      |
+| `hash/*`           | ✓          |           | ✓         |        |
+
+<Note>
+  Robtex fetches both domain reputation (`/api/v1/domain_reputation`) and domain ranking (`/api/v1/domain_ranking`) in a single call using `Promise.allSettled`. If one of the two endpoints fails, the other result is still used.
+</Note>
+
+---
+
+## API keys
+
+VirusTotal, AbuseIPDB, and PolySwarm require API keys. You can supply your own keys per request via request headers, or configure server-side environment variables as defaults.
+
+| Provider    | Request header       | Environment variable   |
+| ----------- | -------------------- | ---------------------- |
+| VirusTotal  | `X-VT-Key`           | `VIRUSTOTAL_API_KEY`   |
+| AbuseIPDB   | `X-AbuseIPDB-Key`    | `ABUSEIPDB_API_KEY`    |
+| PolySwarm   | `X-Polyswarm-Key`    | `POLYSWARM_API_KEY`    |
+
+When both a per-request header and an environment variable are present, the per-request header takes precedence.
+
+---
+
+## Graceful degradation
+
+Source failures do not abort the analysis. `fetchAllSources` runs all source fetches with `Promise.allSettled`. If a source throws, the error is caught and converted to a `SourceWarning` instead of propagating.
+
+```typescript
+// src/scripts/types.ts
+export type SourceWarning = {
+    source: string;   // e.g. "VirusTotal"
+    message: string;  // human-readable description
+    reason?: ErrorType;
+}
+
+export type ErrorType =
+    | 'not_found'
+    | 'api_unavailable'
+    | 'invalid_api_key'
+    | 'model_error'
+    | 'unknown'
+```
+
+Warnings are attached to the `IocAnalysisResult` and forwarded to the AI prompt as a note, so the model is aware that some data may be missing. They are also surfaced to the client in the `meta` SSE event.
+
+<AccordionGroup>
+  <Accordion title="What triggers a SourceWarning?">
+    Any exception thrown by a source fetch function is caught and classified. Common reasons include:
+
+    - `invalid_api_key` — the key was rejected (HTTP 401 or 403)
+    - `api_unavailable` — the upstream service returned a 5xx error
+    - `not_found` — the IoC does not exist in that provider's dataset (e.g., PolySwarm returns HTTP 204 for unknown hashes)
+    - `unknown` — any other unexpected error
+  </Accordion>
+  <Accordion title="What if all sources fail?">
+    If every source returns `null` (i.e., `allSourcesEmpty` returns `true`), the server skips the AI call and streams a `meta` event followed immediately by a `done` event. No verdict is generated because there is no data to reason about.
+  </Accordion>
+</AccordionGroup>

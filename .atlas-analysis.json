@@ -1,0 +1,87 @@
+{
+  "projectType": "saas",
+  "projectName": "CyberThreat AI",
+  "projectDescription": "A web platform that analyzes indicators of compromise (IoCs) using multiple threat intelligence sources and AI to deliver a reasoned security verdict.",
+  "theme": "aspen",
+  "primaryColor": "#ef4444",
+  "lightColor": "#fef2f2",
+  "darkColor": "#7f1d1d",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "configuration"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/ioc-types",
+              "concepts/threat-intelligence-sources",
+              "concepts/ai-analysis"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/using-api-keys",
+              "guides/selecting-ai-models",
+              "guides/interpreting-results",
+              "guides/deployment"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Endpoints",
+            "pages": [
+              "api/overview",
+              "api/analyze-ioc",
+              "api/health"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "api/sse-events",
+              "api/error-codes",
+              "api/rate-limiting"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "IoC detection supporting IPv4, IPv6, domains, MD5, SHA1, and SHA256 hashes",
+    "Multi-source threat intelligence aggregation (VirusTotal, AbuseIPDB, PolySwarm, Robtex)",
+    "Real-time AI analysis via Server-Sent Events (SSE) streaming",
+    "Multiple AI model support via OpenRouter (Gemma, LFM2.5, StepFun, and more)",
+    "Per-user API key configuration stored in localStorage",
+    "Graceful source fallback with per-source warnings on failures",
+    "Rate limiting per IP (configurable via environment variables)",
+    "Automated IoC type detection using Zod schema validation"
+  ],
+  "publicApiSurface": [
+    "GET /api/health",
+    "GET /api/ctai?ioc=<value>&model=<model>",
+    "Header: X-OpenRouter-Key",
+    "Header: X-VT-Key",
+    "Header: X-AbuseIPDB-Key",
+    "Header: X-Polyswarm-Key",
+    "SSE event: meta",
+    "SSE event: model",
+    "SSE event: chunk",
+    "SSE event: done",
+    "SSE event: error"
+  ]
+}

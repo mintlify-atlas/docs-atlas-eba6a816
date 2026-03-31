@@ -1,0 +1,39 @@
+---
+title: "Health check"
+description: "Verify that the CyberThreat AI server is running and ready to accept requests."
+---
+
+Returns the current health status of the server. Use this endpoint to confirm the service is reachable before submitting IoCs, or as a liveness probe in your infrastructure.
+
+```text
+GET /api/health
+```
+
+## Authentication
+
+None required.
+
+## Request
+
+No query parameters or request headers are needed.
+
+```bash
+curl http://localhost:4321/api/health
+```
+
+## Response
+
+**Status:** `200 OK`  
+**Content-Type:** `application/json`
+
+<ResponseField name="status" type="string" required>
+  Always `"ok"` when the server is healthy.
+</ResponseField>
+
+```json
+{ "status": "ok" }
+```
+
+<Note>
+  This endpoint does not check the availability of upstream providers (VirusTotal, AbuseIPDB, PolySwarm, OpenRouter). A `200` response only confirms the CyberThreat AI server process itself is running.
+</Note>

@@ -1,0 +1,84 @@
+---
+title: "Using your API keys"
+description: "Bring your own API keys for VirusTotal, AbuseIPDB, PolySwarm, and OpenRouter to use your own quotas and avoid shared rate limits."
+---
+
+CyberThreat AI supports a bring-your-own-key (BYOK) model. You can supply API keys for the threat intelligence sources and the AI provider, and those keys are used instead of any server-side defaults. This lets you use your own quotas and ensures your analysis volume is never constrained by shared limits.
+
+## Sources and where to get keys
+
+<CardGroup cols={2}>
+  <Card title="VirusTotal" icon="shield-halved" href="https://www.virustotal.com">
+    Used for IP, domain, and hash analysis. Sign up at virustotal.com to get a free API key.
+  </Card>
+  <Card title="AbuseIPDB" icon="circle-exclamation" href="https://www.abuseipdb.com">
+    Used for IP reputation analysis. Register at abuseipdb.com to generate a key.
+  </Card>
+  <Card title="PolySwarm" icon="bug" href="https://polyswarm.network">
+    Used for hash analysis. Create an account at polyswarm.network to obtain a key.
+  </Card>
+  <Card title="OpenRouter" icon="microchip" href="https://openrouter.ai">
+    Required for the AI verdict. Get a key at openrouter.ai. Free-tier models are available.
+  </Card>
+</CardGroup>
+
+<Note>
+  Robtex is used for domain analysis only and does not require an API key.
+</Note>
+
+## Setting keys in the UI
+
+The easiest way to configure your keys is through the settings modal in the platform.
+
+<Steps>
+  <Step title="Open the API keys modal">
+    Click the key icon in the top-right corner of the interface. The **API Keys** settings modal opens.
+  </Step>
+  <Step title="Enter your keys">
+    Fill in the fields for the services you have keys for. You can leave fields empty for services where you want to fall back to server defaults.
+
+    | Field | Service | Used for |
+    |-------|---------|----------|
+    | OpenRouter | AI verdict | All IoC types |
+    | VirusTotal | Threat intel | IP, domain, hash |
+    | AbuseIPDB | Threat intel | IP addresses |
+    | PolySwarm | Threat intel | File hashes |
+  </Step>
+  <Step title="Save">
+    Click **Guardar**. Your keys are saved immediately and used for all subsequent analyses.
+  </Step>
+</Steps>
+
+<Warning>
+  API keys are stored in your browser's `localStorage`. They are never sent to the server except inside the HTTP request headers for each analysis you run. Clear them at any time by clicking **Limpiar todas** in the modal, or by clearing your browser's local storage.
+</Warning>
+
+## Passing keys via HTTP headers
+
+If you are calling the API directly rather than using the UI, pass your keys as request headers.
+
+| Header | Service |
+|--------|---------|
+| `X-OpenRouter-Key` | OpenRouter |
+| `X-VT-Key` | VirusTotal |
+| `X-AbuseIPDB-Key` | AbuseIPDB |
+| `X-Polyswarm-Key` | PolySwarm |
+
+```bash
+curl "https://ctai.marcvspt.tech/api/ctai?ioc=1.2.3.4" \
+  -H "X-OpenRouter-Key: sk-or-your-key" \
+  -H "X-VT-Key: your-virustotal-key" \
+  -H "X-AbuseIPDB-Key: your-abuseipdb-key"
+```
+
+<Tip>
+  You do not need to supply all headers. Omit any header for a service where you are happy using the server's default key (if configured), or where you want to rely on the source's unauthenticated access.
+</Tip>
+
+## What happens when a key is missing
+
+When a key for a threat intelligence source is not provided — either via the UI or a request header — CyberThreat AI falls back to the server-side key configured by the instance operator. If no key is available at all for a given source, that source is queried without authentication (where supported) or skipped, and a **source warning** appears alongside your results.
+
+Source warnings do not stop the analysis. The AI verdict is generated using data from whichever sources did respond. See [Interpreting results](/guides/interpreting-results) for more on how source warnings appear and what they mean.
+
+If no OpenRouter key is available from either source — your header or the server default — the analysis will fail at the AI stage with an `invalid_api_key` error.

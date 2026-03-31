@@ -1,0 +1,86 @@
+---
+title: "Interpreting results"
+description: "Understand every part of the AI verdict — the classification, confidence level, summary, supporting reasons, and recommended actions."
+---
+
+After you submit an IoC, CyberThreat AI queries all relevant threat intelligence sources in parallel and streams an AI-generated verdict to the results panel in real time. The response is always in Spanish. This page explains each section of the output and how to read it.
+
+## The AI verdict structure
+
+Every successful analysis produces a verdict with five sections.
+
+<AccordionGroup>
+  <Accordion title="Veredicto — the classification">
+    The overall threat classification of the IoC. There are three possible values:
+
+    | Value | Meaning |
+    |-------|---------|
+    | **Malicioso** | The IoC is assessed as malicious. It has been associated with known threats, abuse, or malware. |
+    | **Sospechoso** | The IoC shows suspicious characteristics but cannot be conclusively classified as malicious. Treat with caution. |
+    | **Benigno** | The IoC appears benign based on the available intelligence. |
+
+    The verdict is the AI's judgment based on all data returned by the threat intelligence sources. It is not a deterministic rule — it reflects the model's reasoning over the aggregated data.
+  </Accordion>
+  <Accordion title="Confianza — confidence level">
+    How confident the AI is in its verdict. There are three levels:
+
+    | Value | Meaning |
+    |-------|---------|
+    | **Alta** (High) | Strong, consistent signals across multiple sources support the verdict. |
+    | **Media** (Medium) | Some supporting evidence exists but the signals are mixed or partial. |
+    | **Baja** (Low) | Limited or ambiguous data was available. The verdict is a best assessment under uncertainty. |
+
+    Low confidence often occurs when only one or two sources returned data, or when the IoC has minimal historical activity across sources.
+  </Accordion>
+  <Accordion title="Resumen — summary">
+    A concise narrative summary of the analysis. This paragraph explains the key findings from the threat intelligence sources and the reasoning behind the verdict in plain language.
+  </Accordion>
+  <Accordion title="Motivos — supporting reasons">
+    A bullet list of specific evidence or observations that support the verdict. Each point corresponds to a concrete signal found in the intelligence data — for example, a detection count from VirusTotal, an abuse confidence score from AbuseIPDB, or a PolySwarm assertion.
+  </Accordion>
+  <Accordion title="Acciones recomendadas — recommended actions">
+    A bullet list of actions you should consider taking based on the verdict and confidence level. Examples include blocking the IP at the firewall, quarantining a file, or conducting further investigation. These are the AI's recommendations — apply your own judgment before acting.
+  </Accordion>
+</AccordionGroup>
+
+## Source warnings
+
+CyberThreat AI queries multiple intelligence sources for each IoC. If a source returns no data, encounters an API key issue, or is temporarily unavailable, a **source warning** appears alongside the verdict.
+
+<Warning>
+  A source warning does not mean the analysis failed. The AI verdict is still generated using data from the sources that did respond. A warning simply tells you which sources were excluded and why.
+</Warning>
+
+Warnings are displayed inline in the results panel. Each warning identifies the source by name and includes a short reason. Common reasons include:
+
+- **Invalid API key** — the key provided for that source was rejected. Check your key in the settings modal.
+- **No data returned** — the source had no records for this IoC. This is not always an error; new or private IPs and hashes may simply have no history.
+- **Source unavailable** — the source API returned an unexpected error or was unreachable.
+
+When a warning appears, the **Motivos** section in the AI verdict may have fewer data points than usual. Consider the confidence level (**Confianza**) alongside the number of active sources when judging how much weight to give the verdict.
+
+## When all sources return no data
+
+If every threat intelligence source queried returns no data for your IoC, the analysis stream completes without generating an AI verdict. The results panel will show the IoC type and any source warnings, but no **Veredicto**, **Confianza**, or other verdict sections will appear.
+
+This can happen with:
+
+- Newly registered domains with no threat history
+- Private or internal IP address ranges
+- Recently generated file hashes not yet indexed by any source
+
+In this case, the absence of intelligence is itself a signal. A completely unknown IoC may warrant further investigation through additional tooling.
+
+## Understanding the metadata
+
+Above the verdict, the results panel shows metadata from the `meta` event emitted at the start of the stream:
+
+| Field | Description |
+|-------|-------------|
+| **IoC** | The indicator you submitted, exactly as entered. |
+| **Type** | The detected IoC type: `IPv4`, `IPv6`, `domain`, `hash/md5`, `hash/sha1`, or `hash/sha256`. |
+| **Model** | The AI model used. If you selected `openrouter/auto`, this updates to show the real routed model once streaming begins. |
+
+<Tip>
+  The model shown after analysis reflects the actual model that produced the verdict — not necessarily the one you selected in the dropdown. This is especially relevant when using `openrouter/auto`.
+</Tip>

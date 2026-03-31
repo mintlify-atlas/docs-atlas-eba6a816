@@ -1,0 +1,56 @@
+---
+title: "API Overview"
+description: "A complete reference for the CyberThreat AI HTTP API — analyze indicators of compromise and stream AI-powered verdicts."
+---
+
+CyberThreat AI exposes a minimal REST API. You submit an indicator of compromise (IoC) and receive a real-time stream of threat intelligence data and an AI-generated verdict in Spanish.
+
+## Base URL
+
+```text
+http://localhost:4321
+```
+
+In production, replace this with your deployed domain (e.g., `https://ctai.marcvspt.tech`).
+
+## Endpoints
+
+<CardGroup cols={2}>
+  <Card title="Analyze IoC" icon="magnifying-glass" href="/api/analyze-ioc">
+    `GET /api/ctai` — Submit an IoC and receive a streaming SSE response with CTI data and an AI verdict.
+  </Card>
+  <Card title="Health check" icon="heart-pulse" href="/api/health">
+    `GET /api/health` — Verify the server is running.
+  </Card>
+</CardGroup>
+
+## Authentication
+
+No authentication is required to call the API. However, the threat intelligence sources (VirusTotal, AbuseIPDB, PolySwarm) and the AI provider (OpenRouter) require API keys to return data.
+
+You can supply your own keys via request headers. If you omit a header, the server falls back to its own server-side environment variables. If neither is available, that source is skipped and a warning is included in the `meta` SSE event.
+
+| Header | Provider | Required |
+|---|---|---|
+| `X-OpenRouter-Key` | OpenRouter (AI analysis) | Recommended |
+| `X-VT-Key` | VirusTotal | Optional |
+| `X-AbuseIPDB-Key` | AbuseIPDB | Optional |
+| `X-Polyswarm-Key` | PolySwarm | Optional |
+
+<Note>
+  Keys sent in headers are used only for the duration of a single request and are not persisted server-side.
+</Note>
+
+## Rate limiting
+
+Requests to `/api/ctai` are rate-limited per IP address. By default, each IP is allowed **5 requests per 60 seconds**. When you exceed this limit, you receive a `429` response.
+
+See [Rate Limiting](/api/rate-limiting) for the full response shape and retry guidance.
+
+## Response format
+
+`/api/health` returns `application/json`. All other endpoints return `text/event-stream` (Server-Sent Events). See [SSE Events](/api/sse-events) for the full event reference.
+
+## Error handling
+
+Non-2xx responses from `/api/ctai` (before the stream opens) return `application/json`. See [Error Codes](/api/error-codes) for the complete list of HTTP error responses and error type values.

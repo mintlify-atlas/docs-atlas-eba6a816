@@ -1,97 +1,53 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "CyberThreat AI"
+description: "Analyze indicators of compromise with multi-source threat intelligence and AI-powered verdicts."
 ---
 
-## Setting up
+CyberThreat AI is a web platform that lets you submit an indicator of compromise (IoC) — an IP address, domain, or file hash — and instantly receive a threat analysis aggregated from multiple intelligence sources, followed by a reasoned AI verdict.
 
-Get your documentation site up and running in minutes.
-
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Submit your first IoC and get a threat verdict in minutes
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="API Reference" icon="code" href="/api/overview">
+    Integrate CyberThreat AI directly into your workflows via REST API
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Threat Intelligence Sources" icon="shield" href="/concepts/threat-intelligence-sources">
+    Learn how VirusTotal, AbuseIPDB, PolySwarm, and Robtex power the analysis
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="Using Your API Keys" icon="key" href="/guides/using-api-keys">
+    Bring your own API keys for each intelligence provider
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## How it works
 
-Everything you need to create world-class documentation.
+<Steps>
+  <Step title="Submit an IoC">
+    Enter an IPv4 address, IPv6 address, domain name, MD5, SHA1, or SHA256 hash in the search field. CyberThreat AI automatically detects the type.
+  </Step>
+  <Step title="Intelligence is gathered">
+    The platform queries relevant threat intelligence providers in parallel — VirusTotal, AbuseIPDB, PolySwarm, and Robtex — depending on the IoC type.
+  </Step>
+  <Step title="AI delivers a verdict">
+    Aggregated threat data is sent to an AI model via OpenRouter. The response streams in real time, classifying the IoC as **Malicious**, **Suspicious**, or **Benign** with supporting reasoning.
+  </Step>
+  <Step title="Review and act">
+    Read the structured verdict including confidence level, summary, reasons, and recommended actions — all rendered as readable markdown in the UI.
+  </Step>
+</Steps>
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+## Supported IoC types
 
-## Need inspiration?
+| Type | Example |
+|------|---------|
+| IPv4 | `1.2.3.4` |
+| IPv6 | `2001:4860:4860::8888` |
+| Domain | `example.com` |
+| MD5 hash | `44d88612fea8a8f36de82e1278abb02f` |
+| SHA1 hash | `da39a3ee5e6b4b0d3255bfef95601890afd80709` |
+| SHA256 hash | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+<Tip>
+  You can use CyberThreat AI directly in the browser at [ctai.marcvspt.tech](https://ctai.marcvspt.tech) or call the API programmatically from your own tools and pipelines.
+</Tip>

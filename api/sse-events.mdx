@@ -1,0 +1,299 @@
+---
+title: "SSE events"
+description: "Reference for all Server-Sent Events emitted by the /api/ctai endpoint during an IoC analysis stream."
+---
+
+The `/api/ctai` endpoint responds with a `text/event-stream` body using the [Server-Sent Events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events) protocol. Each event in the stream consists of an `event:` line, a `data:` line, and a blank line separator.
+
+```text
+event: chunk
+data: {"content":"**Veredicto:** Malicioso"}
+
+```
+
+The `data:` value is always a JSON object.
+
+## Event sequence
+
+A successful analysis produces events in this order:
+
+```text
+meta → model → chunk (×N) → done
+```
+
+- `meta` is always the first event emitted.
+- `model` is emitted once, immediately after `meta`, when OpenRouter confirms the routed model.
+- `chunk` events follow — one per streaming fragment — until the AI response is complete.
+- `done` signals the end of the stream.
+
+If an error occurs mid-stream, an `error` event is emitted in place of `done`.
+
+<Note>
+  When all CTI sources return no data for an IoC, the stream emits only `meta` followed by `done` — no AI analysis is performed.
+</Note>
+
+## Event types
+
+### `meta`
+
+Emitted first. Contains metadata about the IoC being analyzed, the model that will be used, and any per-source warnings.
+
+<ResponseField name="ioc" type="string" required>
+  The indicator of compromise that was submitted.
+</ResponseField>
+
+<ResponseField name="type" type="string" required>
+  The detected subtype of the IoC. One of: `IPv4`, `IPv6`, `domain`, `hash/md5`, `hash/sha1`, `hash/sha256`.
+</ResponseField>
+
+<ResponseField name="model" type="string" required>
+  The model ID requested for this analysis (e.g., `openrouter/free`). This is the requested model, not necessarily the final routed model — see the `model` event for that.
+</ResponseField>
+
+<ResponseField name="warnings" type="SourceWarning[]">
+  Present only when one or more CTI sources could not be queried. The analysis continues with the remaining sources.
+
+  <Expandable title="SourceWarning properties">
+    <ResponseField name="source" type="string" required>
+      The name of the CTI source that produced the warning (e.g., `"VirusTotal"`, `"AbuseIPDB"`).
+    </ResponseField>
+    <ResponseField name="message" type="string" required>
+      A human-readable description of the issue.
+    </ResponseField>
+    <ResponseField name="reason" type="string">
+      Machine-readable error type. One of: `invalid_api_key`, `api_unavailable`, `not_found`, `unknown`. See [Error Codes](/api/error-codes) for descriptions.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+```json
+{
+  "ioc": "1.2.3.4",
+  "type": "IPv4",
+  "model": "openrouter/free",
+  "warnings": [
+    {
+      "source": "AbuseIPDB",
+      "message": "La API Key de AbuseIPDB es incorrecta.",
+      "reason": "invalid_api_key"
+    }
+  ]
+}
+```
+
+---
+
+### `model`
+
+Emitted once after `meta`, when OpenRouter reports the actual model that processed the request. This may differ from the requested model when using `openrouter/auto` or `openrouter/free`, which route to whichever model is available.
+
+<ResponseField name="model" type="string" required>
+  The real model ID that OpenRouter routed the request to (e.g., `"google/gemma-3-4b-it:free"`).
+</ResponseField>
+
+```json
+{ "model": "google/gemma-3-4b-it:free" }
+```
+
+---
+
+### `chunk`
+
+Emitted once per streaming fragment of the AI response. Concatenate all `chunk` values in order to reconstruct the full response.
+
+<ResponseField name="content" type="string" required>
+  A fragment of the AI-generated Markdown text. The complete response is in **Spanish** and follows a structured format with verdict, confidence, summary, reasons, and recommended actions.
+</ResponseField>
+
+```json
+{ "content": "**Veredicto:** Malicioso" }
+```
+
+The full assembled AI response uses this structure:
+
+```markdown
+**Veredicto:** <Malicioso|Sospechoso|Benigno>
+**Confianza:** <Baja|Media|Alta>
+
+**Resumen:** <short summary>
+
+**Motivos:**
+- <reason>
+- <reason>
+
+**Acciones recomendadas:**
+- <action>
+- <action>
+```
+
+<Tip>
+  Render `chunk` content with a Markdown library (e.g., `marked`) and sanitize the output with `DOMPurify` before injecting it into the DOM.
+</Tip>
+
+---
+
+### `done`
+
+Emitted as the final event when the stream ends successfully.
+
+<ResponseField name="done" type="boolean" required>
+  Always `true`.
+</ResponseField>
+
+```json
+{ "done": true }
+```
+
+---
+
+### `error`
+
+Emitted in place of `done` when an error occurs during streaming — for example, an invalid OpenRouter key or a model-level failure. After an `error` event the stream closes.
+
+<ResponseField name="error" type="string" required>
+  A human-readable error message in Spanish.
+</ResponseField>
+
+<ResponseField name="stage" type="string" required>
+  Where in the pipeline the error occurred. One of:
+
+  - `ioc` — error during CTI data gathering (threat intelligence sources)
+  - `ai` — error during AI analysis (OpenRouter)
+  - `unknown` — unexpected error with no known stage
+</ResponseField>
+
+<ResponseField name="errorType" type="string">
+  Machine-readable error classification. See [Error Codes](/api/error-codes) for the full list. May be absent for `unknown` stage errors.
+</ResponseField>
+
+```json
+{
+  "error": "La API Key de OpenRouter no es válida o no tiene permisos suficientes.",
+  "stage": "ai",
+  "errorType": "invalid_api_key"
+}
+```
+
+## Full stream example
+
+Below is a complete raw SSE stream for a successful IPv4 analysis:
+
+```text
+event: meta
+data: {"ioc":"1.2.3.4","type":"IPv4","model":"openrouter/free"}
+
+event: model
+data: {"model":"google/gemma-3-4b-it:free"}
+
+event: chunk
+data: {"content":"**Veredicto:** Sospechoso\n"}
+
+event: chunk
+data: {"content":"**Confianza:** Media\n"}
+
+event: chunk
+data: {"content":"\n**Resumen:** La dirección IP 1.2.3.4..."}
+
+event: done
+data: {"done":true}
+
+```
+
+## Parsing SSE in JavaScript
+
+```javascript
+const response = await fetch("http://localhost:4321/api/ctai?ioc=1.2.3.4");
+const reader = response.body.getReader();
+const decoder = new TextDecoder();
+let buffer = "";
+let fullMarkdown = "";
+
+while (true) {
+  const { done, value } = await reader.read();
+  if (done) break;
+
+  buffer += decoder.decode(value, { stream: true });
+  const parts = buffer.split("\n\n");
+  buffer = parts.pop() ?? "";
+
+  for (const part of parts) {
+    const lines = part.split("\n");
+    const eventName = lines.find((l) => l.startsWith("event:"))?.slice(6).trim();
+    const dataLine = lines.find((l) => l.startsWith("data:"))?.slice(5).trim();
+    if (!eventName || !dataLine) continue;
+
+    const payload = JSON.parse(dataLine);
+
+    switch (eventName) {
+      case "meta":
+        console.log(`Analyzing ${payload.ioc} (${payload.type}) with ${payload.model}`);
+        if (payload.warnings?.length) {
+          console.warn("Source warnings:", payload.warnings);
+        }
+        break;
+      case "model":
+        console.log("Routed to model:", payload.model);
+        break;
+      case "chunk":
+        fullMarkdown += payload.content;
+        break;
+      case "done":
+        console.log("Analysis complete.");
+        console.log(fullMarkdown);
+        break;
+      case "error":
+        console.error(`[${payload.stage}] ${payload.error} (${payload.errorType})`);
+        break;
+    }
+  }
+}
+```
+
+## Parsing SSE in TypeScript
+
+```typescript
+type MetaEvent = { ioc: string; type: string; model: string; warnings?: SourceWarning[] };
+type ModelEvent = { model: string };
+type ChunkEvent = { content: string };
+type DoneEvent = { done: true };
+type ErrorEvent = { error: string; stage: "ioc" | "ai" | "unknown"; errorType?: string };
+type SourceWarning = { source: string; message: string; reason?: string };
+
+async function analyzeIoc(ioc: string, openRouterKey?: string) {
+  const headers: Record<string, string> = {};
+  if (openRouterKey) headers["X-OpenRouter-Key"] = openRouterKey;
+
+  const res = await fetch(
+    `http://localhost:4321/api/ctai?ioc=${encodeURIComponent(ioc)}`,
+    { headers }
+  );
+
+  if (!res.ok || !res.body) {
+    const err = await res.json();
+    throw new Error(err.error);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const parts = buffer.split("\n\n");
+    buffer = parts.pop() ?? "";
+
+    for (const part of parts) {
+      const lines = part.split("\n");
+      const event = lines.find((l) => l.startsWith("event:"))?.slice(6).trim();
+      const data = lines.find((l) => l.startsWith("data:"))?.slice(5).trim();
+      if (!event || !data) continue;
+
+      const payload = JSON.parse(data);
+      // handle payload based on event type
+    }
+  }
+}
+```
